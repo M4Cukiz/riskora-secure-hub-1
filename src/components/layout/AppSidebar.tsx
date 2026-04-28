@@ -58,25 +58,29 @@ export function AppSidebar() {
           ))}
         </ul>
 
-        <div className="px-2 mt-7 mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50">
-          Modules
-        </div>
-        <ul className="space-y-0.5">
-          {NAV_PLACEHOLDER.map(({ to, label, icon: Icon }) => (
-            <li key={to}>
-              <NavLink to={to} className={({ isActive }) => cn(
-                "group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition",
-                isActive
-                  ? "bg-sidebar-accent text-white"
-                  : "text-sidebar-foreground/65 hover:bg-sidebar-accent/40 hover:text-white"
-              )}>
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{label}</span>
-                <Sparkles className="h-3 w-3 opacity-50" />
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+        {currentUser?.role === "consultant" && (
+          <>
+            <div className="px-2 mt-7 mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50">
+              Modules
+            </div>
+            <ul className="space-y-0.5">
+              {NAV_PLACEHOLDER.map(({ to, label, icon: Icon }) => (
+                <li key={to}>
+                  <NavLink to={to} className={({ isActive }) => cn(
+                    "group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition",
+                    isActive
+                      ? "bg-sidebar-accent text-white"
+                      : "text-sidebar-foreground/65 hover:bg-sidebar-accent/40 hover:text-white"
+                  )}>
+                    <Icon className="h-4 w-4" />
+                    <span className="flex-1">{label}</span>
+                    <Sparkles className="h-3 w-3 opacity-50" />
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </nav>
 
       <div className="border-t border-sidebar-border p-4">
