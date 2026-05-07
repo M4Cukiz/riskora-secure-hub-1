@@ -47,11 +47,11 @@ const App = () => (
             <Route path="/invites" element={<ProtectedRoute allow={["consultant"]}><Invites /></ProtectedRoute>} />
 
             {/* Module placeholders — consultant only */}
-            <Route path="/modules/risk-analysis" element={<ProtectedRoute allow={["consultant"]}><RiskAnalysis /></ProtectedRoute>} />
-            <Route path="/modules/security-requirements" element={<ProtectedRoute allow={["consultant"]}><SecurityRequirements /></ProtectedRoute>} />
-            <Route path="/modules/secure-code-review" element={<ProtectedRoute allow={["consultant"]}><SecureCodeReview /></ProtectedRoute>} />
-            <Route path="/modules/security-testing" element={<ProtectedRoute allow={["consultant"]}><SecurityTesting /></ProtectedRoute>} />
-            <Route path="/modules/compliance" element={<ProtectedRoute allow={["consultant"]}><Compliance /></ProtectedRoute>} />
+            <Route path="/modules/risk-analysis" element={<ProtectedRoute allow={["consultant","client"]}><RiskAnalysisModule /></ProtectedRoute>} />
+            <Route path="/modules/security-requirements" element={<ProtectedRoute allow={["consultant","client"]}><SecurityRequirementsModule /></ProtectedRoute>} />
+            <Route path="/modules/secure-code-review" element={<ProtectedRoute allow={["consultant","client"]}><SecureCodeReviewModule /></ProtectedRoute>} />
+            <Route path="/modules/security-testing" element={<ProtectedRoute allow={["consultant","client"]}><SecurityTestingModule /></ProtectedRoute>} />
+            <Route path="/modules/compliance" element={<ProtectedRoute allow={["consultant","client"]}><ComplianceModule /></ProtectedRoute>} />
 
             {/* Supplier only */}
             <Route path="/supplier/portal" element={<ProtectedRoute allow={["supplier"]}><SupplierPortal /></ProtectedRoute>} />
