@@ -186,6 +186,10 @@ export default function AssessmentDetail() {
             <div className="text-xs text-muted-foreground">{supplier?.contactEmail}</div>
             <div className="mt-1 text-xs text-muted-foreground">{supplier?.category}</div>
           </div>
+
+          {project && (
+            <AttachmentList entityType="assessment" entityId={a.id} projectId={project.id} />
+          )}
         </div>
       </div>
     </AppShell>
