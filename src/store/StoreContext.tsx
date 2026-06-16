@@ -30,7 +30,7 @@ interface StoreContextValue extends StoreState {
   createSupplier: (input: { name: string; organizationId: string; contactEmail: string; category: string }) => Promise<Supplier | null>;
   createAssessment: (input: { projectId: string; supplierId: string; title: string }) => Promise<Assessment | null>;
   updateAssessmentStatus: (id: string, status: AssessmentStatus) => Promise<void>;
-  saveResponses: (assessmentId: string, answers: Record<string, Response["answer"]>) => Promise<void>;
+  saveResponses: (assessmentId: string, answers: Record<string, Response["answer"]>, comments?: Record<string, string>) => Promise<void>;
   recordDecision: (input: { assessmentId: string; decision: DecisionType; comment: string; decidedBy: string }) => Promise<void>;
 
   createInvite: (input: {
@@ -211,17 +211,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { id: data.id, name: data.name, organizationId: data.org_id, contactEmail: data.contact_email, category: data.category };
   }, [refresh]);
 
+  // Fire-and-forget audit log insert — never blocks or throws
+  const logAudit = useCallback(async (
+    entityId: string,
+    action: string,
+    details: Record<string, unknown> = {},
+  ) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData.session?.user?.id;
+    await supabase.from("audit_logs").insert({
+      entity_type:    "assessment",
+      entity_id:      entityId,
+      action,
+      performed_by:   uid ?? null,
+      performer_name: state.currentUser?.name ?? null,
+      details,
+    }).then(() => void 0, () => void 0); // swallow errors
+  }, [state.currentUser?.name]);
+
   const createAssessment: StoreContextValue["createAssessment"] = useCallback(async ({ projectId, supplierId, title }) => {
     const { data, error } = await supabase.from("assessments").insert({
       project_id: projectId, supplier_id: supplierId, title,
     }).select().single();
     if (error) { toast.error(error.message); return null; }
     await refresh();
+    void logAudit(data.id, "assessment_created", { title, projectId, supplierId });
     return {
       id: data.id, projectId: data.project_id, supplierId: data.supplier_id,
       title: data.title, status: data.status, createdAt: data.created_at.slice(0,10),
     };
-  }, [refresh]);
+  }, [refresh, logAudit]);
 
   const updateAssessmentStatus: StoreContextValue["updateAssessmentStatus"] = useCallback(async (id, status) => {
     const patch: any = { status };
@@ -230,15 +249,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.from("assessments").update(patch).eq("id", id);
     if (error) { toast.error(error.message); return; }
     await refresh();
-  }, [refresh]);
+    void logAudit(id, `status_changed_to_${status}`, { status });
+  }, [refresh, logAudit]);
 
-  const saveResponses: StoreContextValue["saveResponses"] = useCallback(async (assessmentId, answers) => {
+  const saveResponses: StoreContextValue["saveResponses"] = useCallback(async (assessmentId, answers, comments) => {
     // Delete existing then insert
     const { error: delErr } = await supabase.from("responses").delete().eq("assessment_id", assessmentId);
     if (delErr) { toast.error(delErr.message); return; }
 
     const rows = Object.entries(answers).map(([question_id, answer]) => ({
       assessment_id: assessmentId, question_id, answer,
+      comment: comments?.[question_id] || null,
     }));
     if (rows.length) {
       const { error: insErr } = await supabase.from("responses").insert(rows);
@@ -263,7 +284,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }).eq("id", assessmentId);
 
     await refresh();
-  }, [state.questions, refresh]);
+    void logAudit(assessmentId, "responses_submitted", {
+      totalAnswered: rows.length, score: result.score, level: result.level,
+    });
+  }, [state.questions, refresh, logAudit]);
 
   const recordDecision: StoreContextValue["recordDecision"] = useCallback(async ({ assessmentId, decision, comment, decidedBy }) => {
     await supabase.from("decisions").delete().eq("assessment_id", assessmentId);
@@ -275,7 +299,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       status: decision === "reject" ? "rejected" : "approved",
     }).eq("id", assessmentId);
     await refresh();
-  }, [refresh]);
+    void logAudit(assessmentId, `decision_recorded`, { decision, comment: comment.slice(0, 100) });
+  }, [refresh, logAudit]);
 
   const createInvite: StoreContextValue["createInvite"] = useCallback(async ({ email, role, orgId, projectId, supplierId }) => {
     const { data, error } = await supabase.from("invites").insert({
