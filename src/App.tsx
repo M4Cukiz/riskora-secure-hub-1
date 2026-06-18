@@ -23,6 +23,7 @@ import SecurityTestingModule from "./pages/SecurityTestingModule.tsx";
 import ComplianceModule from "./pages/ComplianceModule.tsx";
 import Invites from "./pages/Invites.tsx";
 import PublicQuestionnaire from "./pages/PublicQuestionnaire.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -38,8 +39,9 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
 
-            {/* Public token-based questionnaire — no auth required */}
+            {/* Public routes — no auth required */}
             <Route path="/q/:token" element={<PublicQuestionnaire />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Consultant + Client */}
             <Route path="/dashboard" element={<ProtectedRoute allow={["consultant", "client"]}><Dashboard /></ProtectedRoute>} />

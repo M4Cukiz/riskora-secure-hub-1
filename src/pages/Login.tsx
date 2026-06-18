@@ -21,7 +21,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<"signin" | "signup">(inviteToken ? "signup" : "signin");
+  const [tab, setTab] = useState<"signin" | "signup" | "forgot">(inviteToken ? "signup" : "signin");
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => { if (inviteToken) setTab("signup"); }, [inviteToken]);
 
@@ -51,6 +52,17 @@ export default function Login() {
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Account created — signing you in…");
+  }
+
+  async function sendResetEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    setResetSent(true);
   }
 
   async function google() {
@@ -104,7 +116,7 @@ export default function Login() {
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <Tabs value={tab} onValueChange={(v) => { setTab(v as "signin" | "signup" | "forgot"); setResetSent(false); }}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Sign in</TabsTrigger>
               <TabsTrigger value="signup">{inviteToken ? "Accept invite" : "Sign up"}</TabsTrigger>
@@ -116,13 +128,60 @@ export default function Login() {
                   <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <button
+                      type="button"
+                      onClick={() => { setResetSent(false); setTab("forgot"); }}
+                      className="text-[11px] text-muted-foreground hover:text-accent transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <Button type="submit" disabled={busy} className="w-full">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="ml-2 h-4 w-4" /></>}
                 </Button>
               </form>
+            </TabsContent>
+            <TabsContent value="forgot" className="mt-4">
+              {resetSent ? (
+                <div className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-5 text-center space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Check your inbox</p>
+                  <p className="text-xs text-muted-foreground">
+                    A reset link was sent to <strong>{email}</strong>.<br />
+                    Click the link in the email to set a new password.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setResetSent(false); setTab("signin"); }}
+                    className="mt-2 text-xs text-accent hover:underline"
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={sendResetEmail} className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Enter your account email and we'll send you a reset link.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="reset-email">Email</Label>
+                    <Input id="reset-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  </div>
+                  <Button type="submit" disabled={busy} className="w-full bg-accent hover:bg-accent/90">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Send reset link <ArrowRight className="ml-2 h-4 w-4" /></>}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setTab("signin")}
+                    className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    ← Back to sign in
+                  </button>
+                </form>
+              )}
             </TabsContent>
             <TabsContent value="signup" className="mt-4">
               <form onSubmit={signUp} className="space-y-4">
