@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RiskBadge } from "@/components/RiskBadge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Building2, Search } from "lucide-react";
+import { Plus, Building2, Search, Server } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function TPRM() {
@@ -25,6 +26,7 @@ export default function TPRM() {
   const [sEmail, setSEmail] = useState("");
   const [sCategory, setSCategory] = useState("");
   const [sOrg, setSOrg] = useState(store.organizations[0]?.id ?? "");
+  const [sType, setSType] = useState<'IT' | 'Non-IT'>('IT');
 
   // Assessment dialog
   const [assOpen, setAssOpen] = useState(false);
@@ -45,9 +47,9 @@ export default function TPRM() {
 
   function createSupplier() {
     if (!sName.trim() || !sEmail.trim()) { toast.error("Name and email required"); return; }
-    store.createSupplier({ name: sName.trim(), contactEmail: sEmail.trim(), category: sCategory.trim() || "General", organizationId: sOrg });
+    store.createSupplier({ name: sName.trim(), contactEmail: sEmail.trim(), category: sCategory.trim() || "General", organizationId: sOrg, supplierType: sType });
     toast.success("Supplier added");
-    setSupOpen(false); setSName(""); setSEmail(""); setSCategory("");
+    setSupOpen(false); setSName(""); setSEmail(""); setSCategory(""); setSType("IT");
   }
 
   function createAssessment() {
@@ -73,6 +75,17 @@ export default function TPRM() {
                 <div className="space-y-1.5"><Label>Supplier name</Label><Input value={sName} onChange={(e) => setSName(e.target.value)} /></div>
                 <div className="space-y-1.5"><Label>Contact email</Label><Input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} /></div>
                 <div className="space-y-1.5"><Label>Category</Label><Input value={sCategory} onChange={(e) => setSCategory(e.target.value)} placeholder="Cloud Hosting" /></div>
+                <div className="space-y-1.5">
+                  <Label>Supplier type</Label>
+                  <Select value={sType} onValueChange={v => setSType(v as 'IT' | 'Non-IT')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="IT">IT Supplier</SelectItem>
+                      <SelectItem value="Non-IT">Non-IT Supplier</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">IT: cloud, SaaS, software, MSP. Non-IT: logistics, HR, legal, facilities.</p>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Client organization</Label>
                   <Select value={sOrg} onValueChange={setSOrg}>
@@ -169,7 +182,18 @@ export default function TPRM() {
                       <div className="text-base font-semibold">{s.name}</div>
                       <div className="text-xs text-muted-foreground">{s.category}</div>
                     </div>
-                    <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">{org?.name}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">{org?.name}</span>
+                      <span className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        s.supplierType === 'Non-IT'
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                          : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                      )}>
+                        {s.supplierType === 'Non-IT' ? <Building2 className="h-2.5 w-2.5" /> : <Server className="h-2.5 w-2.5" />}
+                        {s.supplierType ?? 'IT'}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
                     <span className="text-muted-foreground">{s.contactEmail}</span>

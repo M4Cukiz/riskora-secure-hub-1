@@ -27,7 +27,7 @@ interface StoreContextValue extends StoreState {
 
   createProject: (input: { name: string; description: string; organizationId: string }) => Promise<Project | null>;
   createOrganization: (input: { name: string }) => Promise<Organization | null>;
-  createSupplier: (input: { name: string; organizationId: string; contactEmail: string; category: string }) => Promise<Supplier | null>;
+  createSupplier: (input: { name: string; organizationId: string; contactEmail: string; category: string; supplierType?: 'IT' | 'Non-IT' }) => Promise<Supplier | null>;
   createAssessment: (input: { projectId: string; supplierId: string; title: string }) => Promise<Assessment | null>;
   updateAssessmentStatus: (id: string, status: AssessmentStatus) => Promise<void>;
   saveResponses: (assessmentId: string, answers: Record<string, Response["answer"]>, comments?: Record<string, string>) => Promise<void>;
@@ -131,6 +131,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       suppliers: (suppliers ?? []).map((s: any) => ({
         id: s.id, name: s.name, organizationId: s.org_id,
         contactEmail: s.contact_email, category: s.category ?? "",
+        supplierType: (s.supplier_type ?? 'IT') as 'IT' | 'Non-IT',
       })),
       assessments: (assessments ?? []).map((a: any) => ({
         id: a.id, projectId: a.project_id, supplierId: a.supplier_id,
@@ -202,13 +203,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { id: data.id, name: data.name, description: data.description, organizationId: data.org_id, status: data.status, createdAt: data.created_at.slice(0,10) };
   }, [refresh]);
 
-  const createSupplier: StoreContextValue["createSupplier"] = useCallback(async ({ name, organizationId, contactEmail, category }) => {
+  const createSupplier: StoreContextValue["createSupplier"] = useCallback(async ({ name, organizationId, contactEmail, category, supplierType }) => {
     const { data, error } = await supabase.from("suppliers").insert({
       name, org_id: organizationId, contact_email: contactEmail, category,
+      supplier_type: supplierType ?? 'IT',
     }).select().single();
     if (error) { toast.error(error.message); return null; }
     await refresh();
-    return { id: data.id, name: data.name, organizationId: data.org_id, contactEmail: data.contact_email, category: data.category };
+    return {
+      id: data.id, name: data.name, organizationId: data.org_id,
+      contactEmail: data.contact_email, category: data.category,
+      supplierType: (data.supplier_type ?? 'IT') as 'IT' | 'Non-IT',
+    };
   }, [refresh]);
 
   // Fire-and-forget audit log insert — never blocks or throws

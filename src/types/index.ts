@@ -32,6 +32,7 @@ export interface Supplier {
   organizationId: string; // the client org that uses this supplier
   contactEmail: string;
   category: string;
+  supplierType?: 'IT' | 'Non-IT';
 }
 
 export type AssessmentStatus =

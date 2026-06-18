@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStore } from "@/store/StoreContext";
-import { computeRiskScore, levelLabel } from "@/lib/risk";
+import { levelLabel } from "@/lib/risk";
+import { computeAdaptiveScore, type SupplierType } from "@/lib/adaptive-scoring";
+import { sendQuestionnaireEmail } from "@/services/emailService";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +13,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   ChevronLeft, Send, CheckCircle2, XCircle, AlertTriangle, FileText, MessageSquare,
   Sparkles, Download, Loader2, ChevronDown, ChevronUp, Clock,
+  Server, Building2, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { DecisionType, RiskLevel } from "@/types";
@@ -20,6 +23,8 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
+const db = supabase as unknown as SupabaseClient;
 import { generateRiskAnalysis, type AIAnalysis } from "@/lib/ai-analysis";
 import { generateAssessmentPDF } from "@/lib/report-pdf";
 
@@ -82,6 +87,8 @@ export default function AssessmentDetail() {
   const [aiExpanded,   setAiExpanded]   = useState<Record<string, boolean>>({
     exec: true, gaps: true, roadmap: false, rationale: false,
   });
+  const [isSending,    setIsSending]    = useState(false);
+  const [tokenExpiry,  setTokenExpiry]  = useState<string | null>(null);
 
   const a          = store.assessments.find(x => x.id === id);
   const supplier   = a ? store.suppliers.find(s => s.id === a.supplierId) : undefined;
@@ -89,9 +96,12 @@ export default function AssessmentDetail() {
   const responses  = a ? store.responses.filter(r => r.assessmentId === a.id) : [];
   const decision   = a ? store.decisions.find(d => d.assessmentId === a.id) : undefined;
 
+  const supplierType: SupplierType = (supplier?.supplierType ?? 'IT') as SupplierType;
   const result = useMemo(
-    () => (responses.length && store.questions.length) ? computeRiskScore(store.questions, responses) : null,
-    [responses, store.questions],
+    () => (responses.length && store.questions.length)
+      ? computeAdaptiveScore(store.questions, responses, supplierType)
+      : null,
+    [responses, store.questions, supplierType],
   );
 
   // Sync decision into form when it loads
@@ -139,15 +149,81 @@ export default function AssessmentDetail() {
       .then(({ data }) => setAuditLogs(data ?? []));
   }, [a?.id, store.assessments]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load token expiry when assessment is in sent/completed state
+  useEffect(() => {
+    if (!a?.id || (a.status !== 'sent' && a.status !== 'completed')) return;
+    db.from("questionnaire_tokens")
+      .select("expires_at")
+      .eq("assessment_id", a.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }: { data: { expires_at?: string } | null }) => {
+        setTokenExpiry(data?.expires_at ?? null);
+      });
+  }, [a?.id, a?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Early return AFTER all hooks ── */
   if (!a) return <Navigate to="/tprm" replace />;
 
   const isConsultant = store.currentUser?.role === "consultant";
   const isClient     = store.currentUser?.role === "client";
 
-  function send() {
-    store.updateAssessmentStatus(a.id, "sent");
-    toast.success("Questionnaire sent to supplier");
+  async function handleSendToSupplier() {
+    setIsSending(true);
+    try {
+      const emailResult = await sendQuestionnaireEmail({
+        assessmentId:    a.id,
+        supplierEmail:   supplier?.contactEmail  ?? '',
+        supplierName:    supplier?.name          ?? 'Supplier',
+        supplierType:    supplierType,
+        assessmentTitle: a.title,
+        projectName:     project?.name           ?? '',
+        consultantName:  store.currentUser?.name ?? 'Your consultant',
+      });
+      await store.updateAssessmentStatus(a.id, 'sent');
+      if (emailResult.success) {
+        toast.success(`Questionnaire sent to ${supplier?.contactEmail}`);
+      } else {
+        toast.warning(`Email failed. Share this link with the supplier:\n${emailResult.questionnaireUrl}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to send questionnaire');
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleResendEmail() {
+    setIsSending(true);
+    try {
+      const emailResult = await sendQuestionnaireEmail({
+        assessmentId:    a.id,
+        supplierEmail:   supplier?.contactEmail  ?? '',
+        supplierName:    supplier?.name          ?? 'Supplier',
+        supplierType:    supplierType,
+        assessmentTitle: a.title,
+        projectName:     project?.name           ?? '',
+        consultantName:  store.currentUser?.name ?? 'Your consultant',
+      });
+      if (emailResult.success) {
+        toast.success('Email resent. New link expires in 30 days.');
+      } else {
+        toast.warning(`Email failed. Share this link manually:\n${emailResult.questionnaireUrl}`);
+      }
+      // Reload token expiry
+      db.from("questionnaire_tokens")
+        .select("expires_at")
+        .eq("assessment_id", a.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }: { data: { expires_at?: string } | null }) => setTokenExpiry(data?.expires_at ?? null));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to resend email');
+    } finally {
+      setIsSending(false);
+    }
   }
   function markReviewed() {
     store.updateAssessmentStatus(a.id, "reviewed");
@@ -264,16 +340,33 @@ export default function AssessmentDetail() {
                 <StatusBadge status={a.status} />
               </div>
               {isConsultant && (
-                <div className="flex gap-2">
-                  {a.status === "draft" && (
-                    <Button size="sm" onClick={send} className="gap-1.5">
-                      <Send className="h-3.5 w-3.5" /> Send to supplier
-                    </Button>
-                  )}
-                  {a.status === "completed" && (
-                    <Button size="sm" variant="outline" onClick={markReviewed} className="gap-1.5">
-                      <FileText className="h-3.5 w-3.5" /> Mark reviewed
-                    </Button>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex gap-2">
+                    {a.status === "draft" && (
+                      <Button size="sm" onClick={handleSendToSupplier} disabled={isSending} className="gap-1.5">
+                        {isSending
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending…</>
+                          : <><Send className="h-3.5 w-3.5" /> Send to supplier</>}
+                      </Button>
+                    )}
+                    {a.status === "sent" && (
+                      <Button size="sm" variant="outline" onClick={handleResendEmail} disabled={isSending} className="gap-1.5">
+                        {isSending
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Resending…</>
+                          : <><RefreshCw className="h-3.5 w-3.5" /> Resend email</>}
+                      </Button>
+                    )}
+                    {a.status === "completed" && (
+                      <Button size="sm" variant="outline" onClick={markReviewed} className="gap-1.5">
+                        <FileText className="h-3.5 w-3.5" /> Mark reviewed
+                      </Button>
+                    )}
+                  </div>
+                  {a.status === "sent" && tokenExpiry && (
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Link expires {new Date(tokenExpiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
                   )}
                 </div>
               )}
@@ -512,11 +605,25 @@ export default function AssessmentDetail() {
                   <span className="font-mono text-5xl font-bold tracking-tight">{result.score}</span>
                   <span className="text-sm text-muted-foreground">/ 100</span>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <RiskBadge level={result.level} />
+                  <div
+                    title={`Score computed with adaptive weights for ${supplierType} suppliers`}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold cursor-default",
+                      supplierType === 'Non-IT'
+                        ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                        : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                    )}
+                  >
+                    {supplierType === 'Non-IT'
+                      ? <Building2 className="h-2.5 w-2.5" />
+                      : <Server className="h-2.5 w-2.5" />}
+                    {supplierType} Supplier
+                  </div>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                  {levelLabel(result.level)} — weighted across {Object.keys(result.byCategory).length} control categories.
+                  {levelLabel(result.level)} — adaptive weights across {Object.keys(result.byCategory).length} control categories.
                 </p>
 
                 {/* Category bar chart */}

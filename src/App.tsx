@@ -22,6 +22,7 @@ import SecureCodeReviewModule from "./pages/SecureCodeReviewModule.tsx";
 import SecurityTestingModule from "./pages/SecurityTestingModule.tsx";
 import ComplianceModule from "./pages/ComplianceModule.tsx";
 import Invites from "./pages/Invites.tsx";
+import PublicQuestionnaire from "./pages/PublicQuestionnaire.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,9 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
+
+            {/* Public token-based questionnaire — no auth required */}
+            <Route path="/q/:token" element={<PublicQuestionnaire />} />
 
             {/* Consultant + Client */}
             <Route path="/dashboard" element={<ProtectedRoute allow={["consultant", "client"]}><Dashboard /></ProtectedRoute>} />
